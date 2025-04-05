@@ -10,6 +10,7 @@ import { SafeERC20 } from
 import { ICctpV2MessageTransmitter } from
     "src/interface/ICctpV2MessageTransmitter.sol";
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
+import { ICctpV2TokenMinter } from "src/interface/ICctpV2TokenMinter.sol";
 import { AddressUtil } from "src/library/AddressUtil.sol";
 import { TypedMemView } from "src/library/TypedMemView.sol";
 import { BurnMessageV2 } from "src/library/cctp/BurnMessageV2.sol";
@@ -30,6 +31,11 @@ contract Paytocol {
     );
     event StreamClaimed(
         bytes32 indexed streamId, uint256 amount, uint256 timestamp
+    );
+    event StreamOpened(
+        bytes32 indexed streamId,
+        address indexed sender,
+        address indexed recipient
     );
 
     struct RelayStream {
@@ -121,6 +127,7 @@ contract Paytocol {
 
     function relayStreamViaCctp(
         ICctpV2MessageTransmitter cctpV2MessageTransmitter,
+        ICctpV2TokenMinter cctpV2TokenMinter,
         bytes calldata message,
         bytes calldata attestation
     ) external returns (bytes32 streamId) {
@@ -149,19 +156,27 @@ contract Paytocol {
         (RelayStream memory relayStream) =
             abi.decode(hookData.clone(), (RelayStream));
 
+        address localToken = cctpV2TokenMinter.getLocalToken(
+            MessageV2._getSourceDomain(msgRef),
+            address(relayStream.token).toBytes32()
+        );
+
         streams[relayStream.streamId] = Stream(
             relayStream.streamId,
             relayStream.sender,
             relayStream.senderChainId,
             relayStream.recipient,
             relayStream.recipientChainId,
-            relayStream.token,
+            IERC20(localToken),
             relayStream.tokenAmountPerInterval,
             0,
             0,
             relayStream.startedAt,
             relayStream.interval,
             relayStream.intervalCount
+        );
+        emit StreamOpened(
+            relayStream.streamId, relayStream.sender, relayStream.recipient
         );
 
         return relayStream.streamId;

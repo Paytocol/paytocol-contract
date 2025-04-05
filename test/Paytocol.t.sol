@@ -10,6 +10,7 @@ import { Paytocol } from "src/Paytocol.sol";
 import { ICctpV2MessageTransmitter } from
     "src/interface/ICctpV2MessageTransmitter.sol";
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
+import { ICctpV2TokenMinter } from "src/interface/ICctpV2TokenMinter.sol";
 import { AddressUtil } from "src/library/AddressUtil.sol";
 import { BurnMessageV2 } from "src/library/cctp/BurnMessageV2.sol";
 import { MessageV2 } from "src/library/cctp/MessageV2.sol";
@@ -77,6 +78,33 @@ contract CctpV2TokenMessengerStub is ICctpV2TokenMessenger {
     }
 }
 
+contract CctpV2TokenMinterStub is ICctpV2TokenMinter {
+    uint32 remoteDomain;
+    bytes32 remoteToken;
+    IERC20 localToken;
+
+    constructor(
+        uint32 _remoteDomain,
+        bytes32 _remoteToken,
+        IERC20 _localToken
+    ) {
+        remoteDomain = _remoteDomain;
+        remoteToken = _remoteToken;
+        localToken = _localToken;
+    }
+
+    function getLocalToken(uint32 _remoteDomain, bytes32 _remoteToken)
+        external
+        view
+        returns (address)
+    {
+        if (_remoteDomain == remoteDomain && _remoteToken == remoteToken) {
+            return address(localToken);
+        }
+        return address(0);
+    }
+}
+
 contract PaytocolTest is Test {
     using AddressUtil for address;
 
@@ -99,12 +127,8 @@ contract PaytocolTest is Test {
     uint256 tokenAmountPerInterval = 10;
     uint256 tokenAmount = tokenAmountPerInterval * intervalCount;
 
-    Token token = new Token(tokenAmount);
-
-    CctpV2MessageTransmitterStub public cctpV2MessageTransmitter =
-        new CctpV2MessageTransmitterStub(token, tokenAmount);
-    CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
-        new CctpV2TokenMessengerStub();
+    Token senderToken = new Token(tokenAmount);
+    Token recipientToken = new Token(tokenAmount);
 
     uint256 cctpMaxFee = 1;
     uint32 cctpMinFinalityThreshold = 500;
@@ -115,7 +139,7 @@ contract PaytocolTest is Test {
             paytocol.getChainId(),
             recipient,
             recipientChainId,
-            token,
+            senderToken,
             tokenAmountPerInterval,
             startedAt,
             interval,
@@ -128,7 +152,7 @@ contract PaytocolTest is Test {
         paytocol.getChainId(),
         recipient,
         recipientChainId,
-        token,
+        senderToken,
         tokenAmountPerInterval,
         startedAt,
         interval,
@@ -136,9 +160,12 @@ contract PaytocolTest is Test {
     );
 
     function testOpenStreamViaCctp() public {
-        token.transfer(sender, tokenAmount);
+        CctpV2TokenMessengerStub cctpV2TokenMessengerStub =
+            new CctpV2TokenMessengerStub();
+
+        senderToken.transfer(sender, tokenAmount);
         vm.prank(sender);
-        token.approve(address(paytocol), tokenAmount);
+        senderToken.approve(address(paytocol), tokenAmount);
 
         vm.expectEmit();
         emit Paytocol.StreamRelayed(
@@ -150,7 +177,7 @@ contract PaytocolTest is Test {
             tokenAmountPerInterval * intervalCount,
             recipientDomainId,
             recipientChainPaytocol.toBytes32(),
-            address(token),
+            address(senderToken),
             recipientChainPaytocol.toBytes32(),
             cctpMaxFee,
             cctpMinFinalityThreshold,
@@ -165,25 +192,34 @@ contract PaytocolTest is Test {
             recipient,
             recipientChainId,
             recipientChainPaytocol,
-            token,
+            senderToken,
             tokenAmountPerInterval,
             startedAt,
             interval,
             intervalCount
         );
 
-        assertEq(token.balanceOf(sender), 0);
-        assertEq(token.balanceOf(address(paytocol)), 0);
+        assertEq(senderToken.balanceOf(sender), 0);
+        assertEq(senderToken.balanceOf(address(paytocol)), 0);
         assertEq(
-            token.balanceOf(address(cctpV2TokenMessengerStub)), tokenAmount
+            senderToken.balanceOf(address(cctpV2TokenMessengerStub)),
+            tokenAmount
         );
     }
 
     function testRelayStreamViaCctp() public {
-        token.transfer(address(cctpV2MessageTransmitter), tokenAmount);
+        CctpV2TokenMinterStub cctpV2TokenMinterStub = new CctpV2TokenMinterStub(
+            senderDomainId, address(senderToken).toBytes32(), recipientToken
+        );
+        CctpV2MessageTransmitterStub cctpV2MessageTransmitterStub =
+            new CctpV2MessageTransmitterStub(recipientToken, tokenAmount);
+
+        recipientToken.transfer(
+            address(cctpV2MessageTransmitterStub), tokenAmount
+        );
 
         bytes memory burnMessage = this.formatBurnMessageForRelay(
-            address(token),
+            address(senderToken),
             recipientChainPaytocol,
             tokenAmount,
             address(paytocol),
@@ -205,39 +241,42 @@ contract PaytocolTest is Test {
         emit CctpV2MessageTransmitterStub.ReceiveMessage(message, attestation);
 
         bytes32 relayStreamId = paytocol.relayStreamViaCctp(
-            cctpV2MessageTransmitter, message, attestation
+            cctpV2MessageTransmitterStub,
+            cctpV2TokenMinterStub,
+            message,
+            attestation
         );
         assertEq(relayStreamId, streamId);
-        assertEq(token.balanceOf(address(paytocol)), tokenAmount);
+        assertEq(recipientToken.balanceOf(address(paytocol)), tokenAmount);
 
         Paytocol.Stream memory stream = paytocol.getStream(relayStreamId);
         assertEq(stream.streamId, relayStreamId);
 
         {
             paytocol.claim(relayStreamId);
-            assertEq(token.balanceOf(recipient), 0);
-            assertEq(token.balanceOf(address(paytocol)), 100);
+            assertEq(recipientToken.balanceOf(recipient), 0);
+            assertEq(recipientToken.balanceOf(address(paytocol)), 100);
         }
 
         {
             vm.warp(interval * 3);
             paytocol.claim(relayStreamId);
-            assertEq(token.balanceOf(recipient), 30);
-            assertEq(token.balanceOf(address(paytocol)), 70);
+            assertEq(recipientToken.balanceOf(recipient), 30);
+            assertEq(recipientToken.balanceOf(address(paytocol)), 70);
         }
 
         {
             vm.warp(interval * 10);
             paytocol.claim(relayStreamId);
-            assertEq(token.balanceOf(recipient), 100);
-            assertEq(token.balanceOf(address(paytocol)), 0);
+            assertEq(recipientToken.balanceOf(recipient), 100);
+            assertEq(recipientToken.balanceOf(address(paytocol)), 0);
         }
 
         {
             vm.warp(interval * 20);
             paytocol.claim(relayStreamId);
-            assertEq(token.balanceOf(recipient), 100);
-            assertEq(token.balanceOf(address(paytocol)), 0);
+            assertEq(recipientToken.balanceOf(recipient), 100);
+            assertEq(recipientToken.balanceOf(address(paytocol)), 0);
         }
     }
 
