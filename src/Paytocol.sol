@@ -28,6 +28,9 @@ contract Paytocol {
         uint256 indexed senderChainId,
         uint256 indexed recipientChainId
     );
+    event StreamClaimed(
+        bytes32 indexed streamId, uint256 amount, uint256 timestamp
+    );
 
     struct RelayStream {
         bytes32 streamId;
@@ -56,6 +59,7 @@ contract Paytocol {
         uint256 interval;
         uint32 intervalCount;
     }
+
     mapping(bytes32 streamId => Stream) private streams;
 
     function openStreamViaCctp(
@@ -161,7 +165,36 @@ contract Paytocol {
         return relayStream.streamId;
     }
 
-    function getStream(bytes32 streamId) external view returns (Stream memory) {
+    function claim(bytes32 streamId) external {
+        Stream storage s = streams[streamId];
+        require(s.streamId != bytes32(""), "Stream not found");
+
+        if (s.tokenAmountClaimed == s.tokenAmountPerInterval * s.intervalCount)
+        {
+            return;
+        }
+
+        uint256 elapsed = block.timestamp - s.startedAt;
+        uint256 intervalCount = elapsed / s.interval;
+        if (intervalCount > s.intervalCount) {
+            intervalCount = s.intervalCount;
+        }
+        uint256 tokenAmountClaimable =
+            s.tokenAmountPerInterval * intervalCount - s.tokenAmountClaimed;
+
+        s.tokenAmountClaimed += tokenAmountClaimable;
+        s.lastClaimedAt = block.timestamp;
+
+        emit StreamClaimed(s.streamId, tokenAmountClaimable, block.timestamp);
+
+        s.token.safeTransfer(s.recipient, tokenAmountClaimable);
+    }
+
+    function getStream(bytes32 streamId)
+        external
+        view
+        returns (Stream memory)
+    {
         Stream storage s = streams[streamId];
         return s;
     }

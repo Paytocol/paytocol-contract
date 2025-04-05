@@ -92,7 +92,7 @@ contract PaytocolTest is Test {
 
     address recipientChainPaytocol = address(paytocol);
 
-    uint256 startedAt = vm.getBlockTimestamp();
+    uint256 startedAt = 0;
     uint256 interval = 10; // 10 secs
     uint32 intervalCount = 10;
 
@@ -131,7 +131,6 @@ contract PaytocolTest is Test {
         interval,
         intervalCount
     );
-
 
     function testOpenStreamViaCctp() public {
         token.transfer(sender, tokenAmount);
@@ -208,6 +207,33 @@ contract PaytocolTest is Test {
 
         Paytocol.Stream memory stream = paytocol.getStream(relayStreamId);
         assertEq(stream.streamId, relayStreamId);
+
+        {
+            paytocol.claim(relayStreamId);
+            assertEq(token.balanceOf(recipient), 0);
+            assertEq(token.balanceOf(address(paytocol)), 100);
+        }
+
+        {
+            vm.warp(interval * 3);
+            paytocol.claim(relayStreamId);
+            assertEq(token.balanceOf(recipient), 30);
+            assertEq(token.balanceOf(address(paytocol)), 70);
+        }
+
+        {
+            vm.warp(interval * 10);
+            paytocol.claim(relayStreamId);
+            assertEq(token.balanceOf(recipient), 100);
+            assertEq(token.balanceOf(address(paytocol)), 0);
+        }
+
+        {
+            vm.warp(interval * 20);
+            paytocol.claim(relayStreamId);
+            assertEq(token.balanceOf(recipient), 100);
+            assertEq(token.balanceOf(address(paytocol)), 0);
+        }
     }
 
     /* utils */
