@@ -7,6 +7,8 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { Test, console } from "forge-std/Test.sol";
 
 import { Paytocol } from "src/Paytocol.sol";
+import { ICctpV2MessageTransmitter } from
+    "src/interface/ICctpV2MessageTransmitter.sol";
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
 import { AddressUtil } from "src/library/AddressUtil.sol";
 import { BurnMessageV2 } from "src/library/cctp/BurnMessageV2.sol";
@@ -15,6 +17,18 @@ import { MessageV2 } from "src/library/cctp/MessageV2.sol";
 contract Token is ERC20 {
     constructor(uint256 initialSupply) ERC20("Token", "TKN") {
         _mint(msg.sender, initialSupply);
+    }
+}
+
+contract CctpV2MessageTransmitterStub is ICctpV2MessageTransmitter {
+    event ReceiveMessage(bytes message, bytes attestation);
+
+    function receiveMessage(bytes calldata message, bytes calldata attestation)
+        external
+        returns (bool success)
+    {
+        emit ReceiveMessage(message, attestation);
+        return true;
     }
 }
 
@@ -58,6 +72,8 @@ contract PaytocolTest is Test {
     using AddressUtil for address;
 
     Paytocol public paytocol = new Paytocol();
+
+    CctpV2MessageTransmitterStub public cctpV2MessageTransmitter = new CctpV2MessageTransmitterStub();
     CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
         new CctpV2TokenMessengerStub();
 
@@ -69,7 +85,7 @@ contract PaytocolTest is Test {
     uint256 recipientChainId = 84532;
     uint32 recipientDomainId = 6;
 
-    address recipientChainPaytocol = makeAddr("recipientDomainPaytocol");
+    address recipientChainPaytocol = address(paytocol);
 
     uint256 startedAt = vm.getBlockTimestamp();
     uint256 interval = 10; // 10 secs
@@ -147,6 +163,78 @@ contract PaytocolTest is Test {
         assertEq(token.balanceOf(address(paytocol)), 0);
         assertEq(
             token.balanceOf(address(cctpV2TokenMessengerStub)), tokenAmount
+        );
+    }
+
+    function testRelayStreamViaCctp() public {
+        bytes memory burnMessage = this.formatBurnMessageForRelay(
+            address(token),
+            recipientChainPaytocol,
+            tokenAmount,
+            address(paytocol),
+            0,
+            abi.encode(relayStream)
+        );
+        bytes memory message = this.formatMessageForRelay(
+            senderDomainId,
+            recipientDomainId,
+            address(paytocol),
+            recipientChainPaytocol,
+            recipientChainPaytocol,
+            2000,
+            burnMessage
+        );
+        bytes memory attestation = bytes("attestation");
+
+        vm.expectEmit();
+        emit CctpV2MessageTransmitterStub.ReceiveMessage(message, attestation);
+
+        paytocol.relayStreamViaCctp(
+            cctpV2MessageTransmitter,
+            message,
+            attestation
+        );
+    }
+
+    /* utils */
+
+    function formatBurnMessageForRelay(
+        address _burnToken,
+        address _mintRecipient,
+        uint256 _amount,
+        address _messageSender,
+        uint256 _maxFee,
+        bytes calldata _hookData
+    ) public pure returns (bytes memory) {
+        return BurnMessageV2._formatMessageForRelay(
+            1,
+            _burnToken.toBytes32(),
+            _mintRecipient.toBytes32(),
+            _amount,
+            _messageSender.toBytes32(),
+            _maxFee,
+            _hookData
+        );
+    }
+
+    function formatMessageForRelay(
+        uint32 _sourceDomain,
+        uint32 _destinationDomain,
+        address _sender,
+        address _recipient,
+        address _destinationCaller,
+        uint32 _minFinalityThreshold,
+        bytes calldata _messageBody
+    ) public pure returns (bytes memory) {
+        return MessageV2._formatMessageForRelay(
+            1,
+            _sourceDomain,
+            _destinationDomain,
+            _sender.toBytes32(),
+            _recipient.toBytes32(),
+            _destinationCaller.toBytes32(),
+            _minFinalityThreshold,
+            _messageBody
         );
     }
 }

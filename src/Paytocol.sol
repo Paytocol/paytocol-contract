@@ -5,6 +5,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from
     "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import { ICctpV2MessageTransmitter } from "src/interface/ICctpV2MessageTransmitter.sol";
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
 import { AddressUtil } from "src/library/AddressUtil.sol";
 
@@ -86,6 +87,14 @@ contract Paytocol {
             minFinalityThreshold: 2000,
             hookData: abi.encode(relayStream)
         });
+    }
+
+    function relayStreamViaCctp(
+        ICctpV2MessageTransmitter cctpV2MessageTransmitter,
+        bytes calldata message,
+        bytes calldata attestation
+    ) external {
+        cctpV2MessageTransmitter.receiveMessage(message, attestation);
     }
 
     function getChainId() public view returns (uint256) {
