@@ -5,6 +5,7 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import { Test, console } from "forge-std/Test.sol";
 import { Paytocol } from "src/Paytocol.sol";
+import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
 
 contract Token is ERC20 {
     constructor(uint256 initialSupply) ERC20("Token", "TKN") {
@@ -12,17 +13,51 @@ contract Token is ERC20 {
     }
 }
 
+contract CctpV2TokenMessengerStub is ICctpV2TokenMessenger {
+    event DepositForBurnWithHook(
+        uint256 amount,
+        uint32 destinationDomain,
+        bytes32 mintRecipient,
+        address burnToken,
+        bytes32 destinationCaller,
+        uint256 maxFee,
+        uint32 minFinalityThreshold,
+        bytes hookData
+    );
+
+    function depositForBurnWithHook(
+        uint256 amount,
+        uint32 destinationDomain,
+        bytes32 mintRecipient,
+        address burnToken,
+        bytes32 destinationCaller,
+        uint256 maxFee,
+        uint32 minFinalityThreshold,
+        bytes calldata hookData
+    ) external {
+        emit DepositForBurnWithHook(
+            amount,
+            destinationDomain,
+            mintRecipient,
+            burnToken,
+            destinationCaller,
+            maxFee,
+            minFinalityThreshold,
+            hookData
+        );
+    }
+}
+
 contract PaytocolTest is Test {
     Paytocol public paytocol = new Paytocol();
+    CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
+        new CctpV2TokenMessengerStub();
 
-    function testStreamLifecycleOnSameChain() public {
+    function testOpenStreamViaCctp() public {
         address sender = makeAddr("sender");
         address recipient = makeAddr("recipient");
-
-        uint256 recipientChainId;
-        assembly {
-            recipientChainId := chainid()
-        }
+        uint32 recipientDomainId = 6;
+        address recipientDomainPaytocol = makeAddr("recipientDomainPaytocol");
 
         uint256 tokenAmount = 100;
         vm.startPrank(sender);
@@ -35,26 +70,24 @@ contract PaytocolTest is Test {
         uint8 intervalCount = 10;
         uint256 tokenAmountPerInterval = tokenAmount / intervalCount;
 
-        bytes32 streamId = keccak256(
-            abi.encode(
-                sender,
-                recipient,
-                recipientChainId,
-                token,
-                tokenAmountPerInterval,
-                startedAt,
-                interval,
-                intervalCount
-            )
+        vm.expectEmit();
+        emit CctpV2TokenMessengerStub.DepositForBurnWithHook(
+            tokenAmountPerInterval * intervalCount,
+            recipientDomainId,
+            bytes32(bytes20(recipientDomainPaytocol)),
+            address(token),
+            bytes32(bytes20(address(0))),
+            0,
+            2000,
+            bytes("")
         );
 
-        vm.expectEmit();
-        emit Paytocol.StreamOpened(streamId, sender, recipient);
-
-        vm.prank(sender);
-        paytocol.openStream(
+        vm.startPrank(sender);
+        paytocol.openStreamViaCctp(
+            cctpV2TokenMessengerStub,
             recipient,
-            recipientChainId,
+            recipientDomainId,
+            recipientDomainPaytocol,
             token,
             tokenAmountPerInterval,
             startedAt,

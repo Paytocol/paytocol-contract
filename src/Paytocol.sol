@@ -5,36 +5,35 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from
     "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract Paytocol {
-    event StreamOpened(
-        bytes32 indexed streamId,
-        address indexed sender,
-        address indexed recipient
-    );
+import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
 
-    function openStream(
+contract Paytocol {
+    using SafeERC20 for IERC20;
+
+    function openStreamViaCctp(
+        ICctpV2TokenMessenger cctpV2TokenMessenger,
         address recipient,
-        uint256 recipientChainId,
+        uint32 recipientDomainId,
+        address recipientDomainPaytocol,
         IERC20 token,
         uint256 tokenAmountPerInterval,
         uint256 startedAt,
         uint256 interval,
         uint8 intervalCount
-    ) external returns (bytes32 streamId) {
-        streamId = keccak256(
-            abi.encode(
-                msg.sender,
-                recipient,
-                recipientChainId,
-                token,
-                tokenAmountPerInterval,
-                startedAt,
-                interval,
-                intervalCount
-            )
-        );
-        emit StreamOpened(streamId, msg.sender, recipient);
+    ) external {
+        uint256 tokenAmount = tokenAmountPerInterval * intervalCount;
+        token.safeTransferFrom(msg.sender, address(this), tokenAmount);
+        token.approve(address(cctpV2TokenMessenger), tokenAmount);
 
-        return streamId;
+        cctpV2TokenMessenger.depositForBurnWithHook({
+            amount: tokenAmount,
+            destinationDomain: recipientDomainId,
+            mintRecipient: bytes32(bytes20(recipientDomainPaytocol)),
+            burnToken: address(token),
+            destinationCaller: bytes32(bytes20(address(0))),
+            maxFee: 0,
+            minFinalityThreshold: 2000,
+            hookData: bytes("")
+        });
     }
 }
