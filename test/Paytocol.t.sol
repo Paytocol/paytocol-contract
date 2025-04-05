@@ -73,7 +73,21 @@ contract PaytocolTest is Test {
         uint32 intervalCount = 10;
         uint256 tokenAmountPerInterval = tokenAmount / intervalCount;
 
+        bytes32 streamId = keccak256(
+            abi.encode(
+                sender,
+                paytocol.getChainId(),
+                recipient,
+                recipientChainId,
+                token,
+                tokenAmountPerInterval,
+                startedAt,
+                interval,
+                intervalCount
+            )
+        );
         Paytocol.RelayStream memory relayStream = Paytocol.RelayStream(
+            streamId,
             sender,
             paytocol.getChainId(),
             recipient,
@@ -83,6 +97,11 @@ contract PaytocolTest is Test {
             startedAt,
             interval,
             intervalCount
+        );
+
+        vm.expectEmit();
+        emit Paytocol.StreamRelayed(
+            streamId, paytocol.getChainId(), recipientChainId
         );
 
         vm.expectEmit();
@@ -112,6 +131,8 @@ contract PaytocolTest is Test {
 
         assertEq(token.balanceOf(sender), 0);
         assertEq(token.balanceOf(address(paytocol)), 0);
-        assertEq(token.balanceOf(address(cctpV2TokenMessengerStub)), tokenAmount);
+        assertEq(
+            token.balanceOf(address(cctpV2TokenMessengerStub)), tokenAmount
+        );
     }
 }

@@ -12,7 +12,14 @@ contract Paytocol {
 
     error ChainUnsupported();
 
+    event StreamRelayed(
+        bytes32 indexed streamId,
+        uint256 indexed senderChainId,
+        uint256 indexed recipientChainId
+    );
+
     struct RelayStream {
+        bytes32 streamId;
         address sender;
         uint256 senderChainId;
         address recipient;
@@ -40,7 +47,21 @@ contract Paytocol {
         token.safeTransferFrom(msg.sender, address(this), tokenAmount);
         token.approve(address(cctpV2TokenMessenger), tokenAmount);
 
+        bytes32 streamId = keccak256(
+            abi.encode(
+                msg.sender,
+                getChainId(),
+                recipient,
+                recipientChainId,
+                token,
+                tokenAmountPerInterval,
+                startedAt,
+                interval,
+                intervalCount
+            )
+        );
         RelayStream memory relayStream = RelayStream(
+            streamId,
             msg.sender,
             getChainId(),
             recipient,
@@ -51,6 +72,8 @@ contract Paytocol {
             interval,
             intervalCount
         );
+        emit StreamRelayed(streamId, getChainId(), recipientChainId);
+
         cctpV2TokenMessenger.depositForBurnWithHook({
             amount: tokenAmount,
             destinationDomain: getCctpDomainId(recipientChainId),
