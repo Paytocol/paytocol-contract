@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { Test, console } from "forge-std/Test.sol";
 import { Paytocol } from "src/Paytocol.sol";
@@ -35,6 +36,7 @@ contract CctpV2TokenMessengerStub is ICctpV2TokenMessenger {
         uint32 minFinalityThreshold,
         bytes calldata hookData
     ) external {
+        IERC20(burnToken).transferFrom(msg.sender, address(this), amount);
         emit DepositForBurnWithHook(
             amount,
             destinationDomain,
@@ -71,16 +73,28 @@ contract PaytocolTest is Test {
         uint32 intervalCount = 10;
         uint256 tokenAmountPerInterval = tokenAmount / intervalCount;
 
+        Paytocol.RelayStream memory relayStream = Paytocol.RelayStream(
+            sender,
+            paytocol.getChainId(),
+            recipient,
+            recipientChainId,
+            token,
+            tokenAmountPerInterval,
+            startedAt,
+            interval,
+            intervalCount
+        );
+
         vm.expectEmit();
         emit CctpV2TokenMessengerStub.DepositForBurnWithHook(
             tokenAmountPerInterval * intervalCount,
             recipientDomainId,
             bytes32(bytes20(recipientChainPaytocol)),
             address(token),
-            bytes32(bytes20(address(0))),
+            bytes32(bytes20(recipientChainPaytocol)),
             0,
             2000,
-            bytes("")
+            abi.encode(relayStream)
         );
 
         vm.startPrank(sender);
@@ -95,5 +109,9 @@ contract PaytocolTest is Test {
             interval,
             intervalCount
         );
+
+        assertEq(token.balanceOf(sender), 0);
+        assertEq(token.balanceOf(address(paytocol)), 0);
+        assertEq(token.balanceOf(address(cctpV2TokenMessengerStub)), tokenAmount);
     }
 }

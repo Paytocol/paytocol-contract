@@ -12,6 +12,18 @@ contract Paytocol {
 
     error ChainUnsupported();
 
+    struct RelayStream {
+        address sender;
+        uint256 senderChainId;
+        address recipient;
+        uint256 recipientChainId;
+        IERC20 token;
+        uint256 tokenAmountPerInterval;
+        uint256 startedAt;
+        uint256 interval;
+        uint32 intervalCount;
+    }
+
     function openStreamViaCctp(
         ICctpV2TokenMessenger cctpV2TokenMessenger,
         address recipient,
@@ -28,19 +40,42 @@ contract Paytocol {
         token.safeTransferFrom(msg.sender, address(this), tokenAmount);
         token.approve(address(cctpV2TokenMessenger), tokenAmount);
 
+        RelayStream memory relayStream = RelayStream(
+            msg.sender,
+            getChainId(),
+            recipient,
+            recipientChainId,
+            token,
+            tokenAmountPerInterval,
+            startedAt,
+            interval,
+            intervalCount
+        );
         cctpV2TokenMessenger.depositForBurnWithHook({
             amount: tokenAmount,
             destinationDomain: getCctpDomainId(recipientChainId),
             mintRecipient: bytes32(bytes20(recipientChainPaytocol)),
             burnToken: address(token),
-            destinationCaller: bytes32(bytes20(address(0))),
+            destinationCaller: bytes32(bytes20(recipientChainPaytocol)),
             maxFee: 0,
             minFinalityThreshold: 2000,
-            hookData: bytes("")
+            hookData: abi.encode(relayStream)
         });
     }
 
-    function getCctpDomainId(uint256 chainId) public pure returns (uint32 domainId) {
+    function getChainId() public view returns (uint256) {
+        uint256 id;
+        assembly {
+            id := chainid()
+        }
+        return id;
+    }
+
+    function getCctpDomainId(uint256 chainId)
+        public
+        pure
+        returns (uint32 domainId)
+    {
         if (chainId == 11155111 || chainId == 1) {
             return 0;
         }
