@@ -5,8 +5,10 @@ import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { Test, console } from "forge-std/Test.sol";
+
 import { Paytocol } from "src/Paytocol.sol";
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
+import { AddressUtil } from "src/library/AddressUtil.sol";
 
 contract Token is ERC20 {
     constructor(uint256 initialSupply) ERC20("Token", "TKN") {
@@ -51,6 +53,8 @@ contract CctpV2TokenMessengerStub is ICctpV2TokenMessenger {
 }
 
 contract PaytocolTest is Test {
+    using AddressUtil for address;
+
     Paytocol public paytocol = new Paytocol();
     CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
         new CctpV2TokenMessengerStub();
@@ -108,9 +112,9 @@ contract PaytocolTest is Test {
         emit CctpV2TokenMessengerStub.DepositForBurnWithHook(
             tokenAmountPerInterval * intervalCount,
             recipientDomainId,
-            bytes32(bytes20(recipientChainPaytocol)),
+            recipientChainPaytocol.toBytes32(),
             address(token),
-            bytes32(bytes20(recipientChainPaytocol)),
+            recipientChainPaytocol.toBytes32(),
             0,
             2000,
             abi.encode(relayStream)

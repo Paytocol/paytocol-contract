@@ -6,8 +6,10 @@ import { SafeERC20 } from
     "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
+import { AddressUtil } from "src/library/AddressUtil.sol";
 
 contract Paytocol {
+    using AddressUtil for address;
     using SafeERC20 for IERC20;
 
     error ChainUnsupported();
@@ -77,9 +79,9 @@ contract Paytocol {
         cctpV2TokenMessenger.depositForBurnWithHook({
             amount: tokenAmount,
             destinationDomain: getCctpDomainId(recipientChainId),
-            mintRecipient: bytes32(bytes20(recipientChainPaytocol)),
+            mintRecipient: recipientChainPaytocol.toBytes32(),
             burnToken: address(token),
-            destinationCaller: bytes32(bytes20(recipientChainPaytocol)),
+            destinationCaller: recipientChainPaytocol.toBytes32(),
             maxFee: 0,
             minFinalityThreshold: 2000,
             hookData: abi.encode(relayStream)
