@@ -56,8 +56,9 @@ contract PaytocolTest is Test {
     function testOpenStreamViaCctp() public {
         address sender = makeAddr("sender");
         address recipient = makeAddr("recipient");
+        uint256 recipientChainId = 84532;
         uint32 recipientDomainId = 6;
-        address recipientDomainPaytocol = makeAddr("recipientDomainPaytocol");
+        address recipientChainPaytocol = makeAddr("recipientDomainPaytocol");
 
         uint256 tokenAmount = 100;
         vm.startPrank(sender);
@@ -67,14 +68,14 @@ contract PaytocolTest is Test {
 
         uint256 startedAt = vm.getBlockTimestamp();
         uint256 interval = 10; // 10 secs
-        uint8 intervalCount = 10;
+        uint32 intervalCount = 10;
         uint256 tokenAmountPerInterval = tokenAmount / intervalCount;
 
         vm.expectEmit();
         emit CctpV2TokenMessengerStub.DepositForBurnWithHook(
             tokenAmountPerInterval * intervalCount,
             recipientDomainId,
-            bytes32(bytes20(recipientDomainPaytocol)),
+            bytes32(bytes20(recipientChainPaytocol)),
             address(token),
             bytes32(bytes20(address(0))),
             0,
@@ -86,8 +87,8 @@ contract PaytocolTest is Test {
         paytocol.openStreamViaCctp(
             cctpV2TokenMessengerStub,
             recipient,
-            recipientDomainId,
-            recipientDomainPaytocol,
+            recipientChainId,
+            recipientChainPaytocol,
             token,
             tokenAmountPerInterval,
             startedAt,
