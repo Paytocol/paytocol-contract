@@ -9,6 +9,8 @@ import { Test, console } from "forge-std/Test.sol";
 import { Paytocol } from "src/Paytocol.sol";
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
 import { AddressUtil } from "src/library/AddressUtil.sol";
+import { BurnMessageV2 } from "src/library/cctp/BurnMessageV2.sol";
+import { MessageV2 } from "src/library/cctp/MessageV2.sol";
 
 contract Token is ERC20 {
     constructor(uint256 initialSupply) ERC20("Token", "TKN") {
@@ -59,39 +61,27 @@ contract PaytocolTest is Test {
     CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
         new CctpV2TokenMessengerStub();
 
-    function testOpenStreamViaCctp() public {
-        address sender = makeAddr("sender");
-        address recipient = makeAddr("recipient");
-        uint256 recipientChainId = 84532;
-        uint32 recipientDomainId = 6;
-        address recipientChainPaytocol = makeAddr("recipientDomainPaytocol");
+    address sender = makeAddr("sender");
+    uint256 senderChainId = 11155111;
+    uint32 senderDomainId = 0;
 
-        uint256 tokenAmount = 100;
-        vm.startPrank(sender);
-        Token token = new Token(tokenAmount);
-        token.approve(address(paytocol), tokenAmount);
-        vm.stopPrank();
+    address recipient = makeAddr("recipient");
+    uint256 recipientChainId = 84532;
+    uint32 recipientDomainId = 6;
 
-        uint256 startedAt = vm.getBlockTimestamp();
-        uint256 interval = 10; // 10 secs
-        uint32 intervalCount = 10;
-        uint256 tokenAmountPerInterval = tokenAmount / intervalCount;
+    address recipientChainPaytocol = makeAddr("recipientDomainPaytocol");
 
-        bytes32 streamId = keccak256(
-            abi.encode(
-                sender,
-                paytocol.getChainId(),
-                recipient,
-                recipientChainId,
-                token,
-                tokenAmountPerInterval,
-                startedAt,
-                interval,
-                intervalCount
-            )
-        );
-        Paytocol.RelayStream memory relayStream = Paytocol.RelayStream(
-            streamId,
+    uint256 startedAt = vm.getBlockTimestamp();
+    uint256 interval = 10; // 10 secs
+    uint32 intervalCount = 10;
+
+    uint256 tokenAmountPerInterval = 10;
+    uint256 tokenAmount = tokenAmountPerInterval * intervalCount;
+
+    Token token = new Token(tokenAmount);
+
+    bytes32 streamId = keccak256(
+        abi.encode(
             sender,
             paytocol.getChainId(),
             recipient,
@@ -101,8 +91,28 @@ contract PaytocolTest is Test {
             startedAt,
             interval,
             intervalCount
-        );
+        )
+    );
+    Paytocol.RelayStream relayStream = Paytocol.RelayStream(
+        streamId,
+        sender,
+        paytocol.getChainId(),
+        recipient,
+        recipientChainId,
+        token,
+        tokenAmountPerInterval,
+        startedAt,
+        interval,
+        intervalCount
+    );
 
+    function setUp() public {
+        token.transfer(sender, tokenAmount);
+        vm.prank(sender);
+        token.approve(address(paytocol), tokenAmount);
+    }
+
+    function testOpenStreamViaCctp() public {
         vm.expectEmit();
         emit Paytocol.StreamRelayed(
             streamId, paytocol.getChainId(), recipientChainId
