@@ -106,6 +106,9 @@ contract PaytocolTest is Test {
     CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
         new CctpV2TokenMessengerStub();
 
+    uint256 cctpMaxFee = 1;
+    uint32 cctpMinFinalityThreshold = 500;
+
     bytes32 streamId = keccak256(
         abi.encode(
             sender,
@@ -149,14 +152,16 @@ contract PaytocolTest is Test {
             recipientChainPaytocol.toBytes32(),
             address(token),
             recipientChainPaytocol.toBytes32(),
-            0,
-            2000,
+            cctpMaxFee,
+            cctpMinFinalityThreshold,
             abi.encode(relayStream)
         );
 
         vm.startPrank(sender);
         paytocol.openStreamViaCctp(
             cctpV2TokenMessengerStub,
+            cctpMaxFee,
+            cctpMinFinalityThreshold,
             recipient,
             recipientChainId,
             recipientChainPaytocol,
@@ -182,7 +187,7 @@ contract PaytocolTest is Test {
             recipientChainPaytocol,
             tokenAmount,
             address(paytocol),
-            0,
+            cctpMaxFee,
             abi.encode(relayStream)
         );
         bytes memory message = this.formatMessageForRelay(
@@ -191,7 +196,7 @@ contract PaytocolTest is Test {
             address(paytocol),
             recipientChainPaytocol,
             recipientChainPaytocol,
-            2000,
+            cctpMinFinalityThreshold,
             burnMessage
         );
         bytes memory attestation = bytes("attestation");

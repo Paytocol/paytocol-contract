@@ -64,6 +64,8 @@ contract Paytocol {
 
     function openStreamViaCctp(
         ICctpV2TokenMessenger cctpV2TokenMessenger,
+        uint256 cctpMaxFee,
+        uint32 cctpMinFinalityThreshold,
         address recipient,
         uint256 recipientChainId,
         address recipientChainPaytocol,
@@ -111,8 +113,8 @@ contract Paytocol {
             mintRecipient: recipientChainPaytocol.toBytes32(),
             burnToken: address(token),
             destinationCaller: recipientChainPaytocol.toBytes32(),
-            maxFee: 0,
-            minFinalityThreshold: 2000,
+            maxFee: cctpMaxFee,
+            minFinalityThreshold: cctpMinFinalityThreshold,
             hookData: abi.encode(relayStream)
         });
     }
