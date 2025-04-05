@@ -168,6 +168,7 @@ contract Paytocol {
     function claim(bytes32 streamId) external {
         Stream storage s = streams[streamId];
         require(s.streamId != bytes32(""), "Stream not found");
+        require(s.startedAt <= block.timestamp, "Stream not able to claim yet");
 
         if (s.tokenAmountClaimed == s.tokenAmountPerInterval * s.intervalCount)
         {
