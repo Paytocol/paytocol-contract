@@ -127,11 +127,12 @@ contract PaytocolTest is Test {
     uint256 tokenAmountPerInterval = 10;
     uint256 tokenAmount = tokenAmountPerInterval * intervalCount;
 
-    Token senderToken = new Token(tokenAmount);
-    Token recipientToken = new Token(tokenAmount);
-
     uint256 cctpMaxFee = 1;
     uint32 cctpMinFinalityThreshold = 500;
+
+    Token senderToken = new Token(tokenAmount + cctpMaxFee);
+    Token recipientToken = new Token(tokenAmount);
+
 
     bytes32 streamId = keccak256(
         abi.encode(
@@ -163,9 +164,9 @@ contract PaytocolTest is Test {
         CctpV2TokenMessengerStub cctpV2TokenMessengerStub =
             new CctpV2TokenMessengerStub();
 
-        senderToken.transfer(sender, tokenAmount);
+        senderToken.transfer(sender, tokenAmount + cctpMaxFee);
         vm.prank(sender);
-        senderToken.approve(address(paytocol), tokenAmount);
+        senderToken.approve(address(paytocol), tokenAmount + cctpMaxFee);
 
         vm.expectEmit();
         emit Paytocol.StreamRelayed(
@@ -174,7 +175,7 @@ contract PaytocolTest is Test {
 
         vm.expectEmit();
         emit CctpV2TokenMessengerStub.DepositForBurnWithHook(
-            tokenAmountPerInterval * intervalCount,
+            tokenAmountPerInterval * intervalCount + cctpMaxFee,
             recipientDomainId,
             recipientChainPaytocol.toBytes32(),
             address(senderToken),
@@ -203,7 +204,7 @@ contract PaytocolTest is Test {
         assertEq(senderToken.balanceOf(address(paytocol)), 0);
         assertEq(
             senderToken.balanceOf(address(cctpV2TokenMessengerStub)),
-            tokenAmount
+            tokenAmount + cctpMaxFee
         );
     }
 
@@ -221,7 +222,7 @@ contract PaytocolTest is Test {
         bytes memory burnMessage = this.formatBurnMessageForRelay(
             address(senderToken),
             recipientChainPaytocol,
-            tokenAmount,
+            tokenAmount + cctpMaxFee,
             address(paytocol),
             cctpMaxFee,
             abi.encode(relayStream)

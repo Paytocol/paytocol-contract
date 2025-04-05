@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.27;
 
-import { Test, console } from "forge-std/Test.sol";
-
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from
     "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -81,7 +79,7 @@ contract Paytocol {
         uint256 interval,
         uint32 intervalCount
     ) external {
-        uint256 tokenAmount = tokenAmountPerInterval * intervalCount;
+        uint256 tokenAmount = tokenAmountPerInterval * intervalCount + cctpMaxFee;
 
         token.safeTransferFrom(msg.sender, address(this), tokenAmount);
         token.approve(address(cctpV2TokenMessenger), tokenAmount);
