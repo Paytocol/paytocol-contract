@@ -1,17 +1,25 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.27;
 
+import { Test, console } from "forge-std/Test.sol";
+
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from
     "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import { ICctpV2MessageTransmitter } from "src/interface/ICctpV2MessageTransmitter.sol";
+import { ICctpV2MessageTransmitter } from
+    "src/interface/ICctpV2MessageTransmitter.sol";
 import { ICctpV2TokenMessenger } from "src/interface/ICctpV2TokenMessenger.sol";
 import { AddressUtil } from "src/library/AddressUtil.sol";
+import { TypedMemView } from "src/library/TypedMemView.sol";
+import { BurnMessageV2 } from "src/library/cctp/BurnMessageV2.sol";
+import { MessageV2 } from "src/library/cctp/MessageV2.sol";
 
 contract Paytocol {
     using AddressUtil for address;
     using SafeERC20 for IERC20;
+    using TypedMemView for bytes;
+    using TypedMemView for bytes29;
 
     error ChainUnsupported();
 
@@ -33,6 +41,22 @@ contract Paytocol {
         uint256 interval;
         uint32 intervalCount;
     }
+
+    struct Stream {
+        bytes32 streamId;
+        address sender;
+        uint256 senderChainId;
+        address recipient;
+        uint256 recipientChainId;
+        IERC20 token;
+        uint256 tokenAmountPerInterval;
+        uint256 tokenAmountClaimed;
+        uint256 lastClaimedAt;
+        uint256 startedAt;
+        uint256 interval;
+        uint32 intervalCount;
+    }
+    mapping(bytes32 streamId => Stream) private streams;
 
     function openStreamViaCctp(
         ICctpV2TokenMessenger cctpV2TokenMessenger,
@@ -93,8 +117,53 @@ contract Paytocol {
         ICctpV2MessageTransmitter cctpV2MessageTransmitter,
         bytes calldata message,
         bytes calldata attestation
-    ) external {
-        cctpV2MessageTransmitter.receiveMessage(message, attestation);
+    ) external returns (bytes32 streamId) {
+        // Validate message
+        bytes29 msgRef = message.ref(0);
+        MessageV2._validateMessageFormat(msgRef);
+        require(MessageV2._getVersion(msgRef) == 1, "Invalid message version");
+
+        // Validate burn message
+        bytes29 msgBody = MessageV2._getMessageBody(msgRef);
+        BurnMessageV2._validateBurnMessageFormat(msgBody);
+        require(
+            BurnMessageV2._getVersion(msgBody) == 1,
+            "Invalid message body version"
+        );
+
+        // Relay message
+        bool relaySuccess =
+            cctpV2MessageTransmitter.receiveMessage(message, attestation);
+        require(relaySuccess, "Receive message failed");
+
+        // Validate hook data
+        bytes29 hookData = BurnMessageV2._getHookData(msgBody);
+        require(hookData.isValid(), "Invalid hook data");
+
+        (RelayStream memory relayStream) =
+            abi.decode(hookData.clone(), (RelayStream));
+
+        streams[relayStream.streamId] = Stream(
+            relayStream.streamId,
+            relayStream.sender,
+            relayStream.senderChainId,
+            relayStream.recipient,
+            relayStream.recipientChainId,
+            relayStream.token,
+            relayStream.tokenAmountPerInterval,
+            0,
+            0,
+            relayStream.startedAt,
+            relayStream.interval,
+            relayStream.intervalCount
+        );
+
+        return relayStream.streamId;
+    }
+
+    function getStream(bytes32 streamId) external view returns (Stream memory) {
+        Stream storage s = streams[streamId];
+        return s;
     }
 
     function getChainId() public view returns (uint256) {

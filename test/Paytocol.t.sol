@@ -23,11 +23,20 @@ contract Token is ERC20 {
 contract CctpV2MessageTransmitterStub is ICctpV2MessageTransmitter {
     event ReceiveMessage(bytes message, bytes attestation);
 
+    IERC20 token;
+    uint256 tokenAmount;
+
+    constructor(IERC20 _token, uint256 _tokenAmount) {
+        token = _token;
+        tokenAmount = _tokenAmount;
+    }
+
     function receiveMessage(bytes calldata message, bytes calldata attestation)
         external
         returns (bool success)
     {
         emit ReceiveMessage(message, attestation);
+        token.transfer(msg.sender, tokenAmount);
         return true;
     }
 }
@@ -73,10 +82,6 @@ contract PaytocolTest is Test {
 
     Paytocol public paytocol = new Paytocol();
 
-    CctpV2MessageTransmitterStub public cctpV2MessageTransmitter = new CctpV2MessageTransmitterStub();
-    CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
-        new CctpV2TokenMessengerStub();
-
     address sender = makeAddr("sender");
     uint256 senderChainId = 11155111;
     uint32 senderDomainId = 0;
@@ -95,6 +100,11 @@ contract PaytocolTest is Test {
     uint256 tokenAmount = tokenAmountPerInterval * intervalCount;
 
     Token token = new Token(tokenAmount);
+
+    CctpV2MessageTransmitterStub public cctpV2MessageTransmitter =
+        new CctpV2MessageTransmitterStub(token, tokenAmount);
+    CctpV2TokenMessengerStub public cctpV2TokenMessengerStub =
+        new CctpV2TokenMessengerStub();
 
     bytes32 streamId = keccak256(
         abi.encode(
@@ -122,13 +132,12 @@ contract PaytocolTest is Test {
         intervalCount
     );
 
-    function setUp() public {
+
+    function testOpenStreamViaCctp() public {
         token.transfer(sender, tokenAmount);
         vm.prank(sender);
         token.approve(address(paytocol), tokenAmount);
-    }
 
-    function testOpenStreamViaCctp() public {
         vm.expectEmit();
         emit Paytocol.StreamRelayed(
             streamId, paytocol.getChainId(), recipientChainId
@@ -167,6 +176,8 @@ contract PaytocolTest is Test {
     }
 
     function testRelayStreamViaCctp() public {
+        token.transfer(address(cctpV2MessageTransmitter), tokenAmount);
+
         bytes memory burnMessage = this.formatBurnMessageForRelay(
             address(token),
             recipientChainPaytocol,
@@ -189,11 +200,14 @@ contract PaytocolTest is Test {
         vm.expectEmit();
         emit CctpV2MessageTransmitterStub.ReceiveMessage(message, attestation);
 
-        paytocol.relayStreamViaCctp(
-            cctpV2MessageTransmitter,
-            message,
-            attestation
+        bytes32 relayStreamId = paytocol.relayStreamViaCctp(
+            cctpV2MessageTransmitter, message, attestation
         );
+        assertEq(relayStreamId, streamId);
+        assertEq(token.balanceOf(address(paytocol)), tokenAmount);
+
+        Paytocol.Stream memory stream = paytocol.getStream(relayStreamId);
+        assertEq(stream.streamId, relayStreamId);
     }
 
     /* utils */
